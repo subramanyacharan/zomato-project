@@ -18,8 +18,8 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Load environment variables
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# Load environment variables (fails gracefully if .env is missing in production)
+PROJECT_ROOT = Path(__file__).resolve().parent
 load_dotenv(PROJECT_ROOT / ".env")
 
 def run_script(script_path: str, args: list[str]) -> dict[str, Any]:
