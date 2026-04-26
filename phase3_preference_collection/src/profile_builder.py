@@ -8,7 +8,7 @@ from typing import Any, Optional
 
 import pandas as pd
 
-from config import BUDGET_ALIASES, PHASE2_METADATA_FILE, PROFILES_DIR
+from config import BUDGET_ALIASES, PHASE2_METADATA_FILE, PROFILES_DIR, DATA_DIR
 
 
 @dataclass
@@ -120,6 +120,13 @@ def _normalize_cuisine(value: Any, valid_cuisines: list[str]) -> tuple[Optional[
 
 
 def _extract_reference_lists(df: pd.DataFrame) -> tuple[list[str], list[str]]:
+    reference_path = DATA_DIR / "reference_lists.json"
+    if reference_path.exists():
+        with open(reference_path, "r") as f:
+            data = json.load(f)
+            return data["locations"], data["cuisines"]
+            
+    # Fallback if JSON not found
     locations = sorted({str(v).strip() for v in df["location"].dropna().unique() if str(v).strip()})
 
     cuisines: set[str] = set()
@@ -128,12 +135,18 @@ def _extract_reference_lists(df: pd.DataFrame) -> tuple[list[str], list[str]]:
             token = item.strip()
             if token:
                 cuisines.add(token)
-    return locations, sorted(cuisines)
+    return locations, sorted(list(cuisines))
 
 
 def build_profile(payload: dict[str, Any]) -> ValidationResult:
-    df = _load_phase2_reference()
-    valid_locations, valid_cuisines = _extract_reference_lists(df)
+    reference_path = DATA_DIR / "reference_lists.json"
+    if reference_path.exists():
+        with open(reference_path, "r") as f:
+            data = json.load(f)
+            valid_locations, valid_cuisines = data["locations"], data["cuisines"]
+    else:
+        df = _load_phase2_reference()
+        valid_locations, valid_cuisines = _extract_reference_lists(df)
 
     errors: list[str] = []
     warnings: list[str] = []

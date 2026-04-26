@@ -24,7 +24,17 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 def run_script(script_path: str, args: list[str]) -> dict[str, Any]:
     cmd = [sys.executable, str(PROJECT_ROOT / script_path)] + args
-    result = subprocess.run(cmd, cwd=str(PROJECT_ROOT), capture_output=True, text=True)
+    
+    # Merge current environment with Streamlit secrets
+    env = os.environ.copy()
+    try:
+        # Inject streamlit secrets into the environment for subprocesses
+        for key, value in st.secrets.items():
+            env[key] = str(value)
+    except:
+        pass # Not running in Streamlit Cloud or no secrets set
+        
+    result = subprocess.run(cmd, cwd=str(PROJECT_ROOT), capture_output=True, text=True, env=env)
     if result.returncode != 0:
         raise Exception(f"Script {script_path} failed: {result.stderr}")
     
