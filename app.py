@@ -80,10 +80,19 @@ st.markdown("Discover your next favorite meal using our advanced LLM-powered eng
 # Sidebar for inputs
 with st.sidebar:
     st.header("Your Preferences")
-    location = st.text_input("Location", value="Bellandur", placeholder="e.g. Bellandur")
+    
+    locations = ["Bellandur", "Indiranagar", "Koramangala", "Whitefield", "Marathahalli", "HSR", "Jayanagar", "JP Nagar", "BTM", "Banashankari", "Malleshwaram", "MG Road", "Electronic City", "Sarjapur Road"]
+    location = st.selectbox("Location", options=locations, index=0)
+    
     budget = st.selectbox("Budget", options=["low", "medium", "high"], index=2)
-    minimum_rating = st.number_input("Minimum Rating", min_value=0.0, max_value=5.0, value=4.0, step=0.1)
-    cuisine = st.text_input("Cuisine (Optional)", placeholder="e.g. Italian")
+    
+    ratings = [3.0, 3.5, 4.0, 4.5, 4.8]
+    minimum_rating = st.selectbox("Minimum Rating", options=ratings, index=2)
+    
+    cuisines = ["Any", "North Indian", "South Indian", "Chinese", "Italian", "Continental", "Desserts", "Fast Food", "Biryani", "Street Food", "Cafe", "Mexican", "Japanese", "Healthy Food"]
+    cuisine_selection = st.selectbox("Cuisine", options=cuisines, index=0)
+    cuisine = None if cuisine_selection == "Any" else cuisine_selection
+    
     top_n = st.slider("Number of Recommendations", min_value=1, max_value=10, value=5)
     mock = st.checkbox("Mock Mode (No API Call)", value=False)
     
@@ -102,7 +111,7 @@ if submit_button:
         "additional_preferences": []
     }
 
-    with st.spinner("Analyzing your preferences and consulting Llama 3.3..."):
+    with st.spinner("Analyzing your preferences and generating recommendations..."):
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".json") as tf:
             json.dump(payload, tf)
             temp_input_path = tf.name

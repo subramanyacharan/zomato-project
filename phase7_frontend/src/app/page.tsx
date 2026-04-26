@@ -80,15 +80,27 @@ export default function Home() {
           <div className={styles.formGrid}>
             <div className={styles.inputGroup}>
               <label>Location</label>
-              <input 
-                type="text" 
+              <select 
                 name="location" 
                 value={form.location} 
                 onChange={handleChange} 
-                className={styles.input} 
-                required 
-                placeholder="e.g. Bellandur"
-              />
+                className={styles.input}
+              >
+                <option value="Bellandur">Bellandur</option>
+                <option value="Indiranagar">Indiranagar</option>
+                <option value="Koramangala">Koramangala</option>
+                <option value="Whitefield">Whitefield</option>
+                <option value="Marathahalli">Marathahalli</option>
+                <option value="HSR">HSR</option>
+                <option value="Jayanagar">Jayanagar</option>
+                <option value="JP Nagar">JP Nagar</option>
+                <option value="BTM">BTM</option>
+                <option value="Banashankari">Banashankari</option>
+                <option value="Malleshwaram">Malleshwaram</option>
+                <option value="MG Road">MG Road</option>
+                <option value="Electronic City">Electronic City</option>
+                <option value="Sarjapur Road">Sarjapur Road</option>
+              </select>
             </div>
             <div className={styles.inputGroup}>
               <label>Budget</label>
@@ -104,28 +116,43 @@ export default function Home() {
               </select>
             </div>
             <div className={styles.inputGroup}>
-              <label>Min Rating (0-5)</label>
-              <input 
-                type="number" 
-                step="0.1" 
-                min="0" 
-                max="5"
+              <label>Min Rating</label>
+              <select 
                 name="minimum_rating" 
                 value={form.minimum_rating} 
                 onChange={handleChange} 
-                className={styles.input} 
-              />
+                className={styles.input}
+              >
+                <option value="3.0">3.0</option>
+                <option value="3.5">3.5</option>
+                <option value="4.0">4.0</option>
+                <option value="4.5">4.5</option>
+                <option value="4.8">4.8</option>
+              </select>
             </div>
             <div className={styles.inputGroup}>
-              <label>Cuisine (Optional)</label>
-              <input 
-                type="text" 
+              <label>Cuisine</label>
+              <select 
                 name="cuisine" 
                 value={form.cuisine} 
                 onChange={handleChange} 
-                className={styles.input} 
-                placeholder="e.g. Italian"
-              />
+                className={styles.input}
+              >
+                <option value="">Any</option>
+                <option value="North Indian">North Indian</option>
+                <option value="South Indian">South Indian</option>
+                <option value="Chinese">Chinese</option>
+                <option value="Italian">Italian</option>
+                <option value="Continental">Continental</option>
+                <option value="Desserts">Desserts</option>
+                <option value="Fast Food">Fast Food</option>
+                <option value="Biryani">Biryani</option>
+                <option value="Street Food">Street Food</option>
+                <option value="Cafe">Cafe</option>
+                <option value="Mexican">Mexican</option>
+                <option value="Japanese">Japanese</option>
+                <option value="Healthy Food">Healthy Food</option>
+              </select>
             </div>
           </div>
           <button type="submit" className={styles.submitBtn} disabled={loading}>
@@ -137,7 +164,7 @@ export default function Home() {
       {loading && (
         <div className={styles.loaderContainer}>
           <div className={styles.spinner}></div>
-          <p>Consulting with Llama 3.3...</p>
+          <p>Analyzing your preferences...</p>
         </div>
       )}
 
