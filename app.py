@@ -2,9 +2,8 @@ import os
 import sys
 import json
 import tempfile
-import subprocess
 from pathlib import Path
-from typing import Any, Tuple
+from typing import Tuple
 
 import pandas as pd
 import streamlit as st
@@ -12,7 +11,7 @@ from dotenv import load_dotenv
 
 # Page config must be the first Streamlit command
 st.set_page_config(
-    page_title="Zomato AI Engine",
+    page_title="Zomato Engine",
     page_icon="🍽️",
     layout="centered",
     initial_sidebar_state="expanded",
@@ -22,30 +21,20 @@ st.set_page_config(
 PROJECT_ROOT = Path(__file__).resolve().parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-def run_script(script_path: str, args: list[str]) -> dict[str, Any]:
-    cmd = [sys.executable, str(PROJECT_ROOT / script_path)] + args
-    
-    # Merge current environment with Streamlit secrets
-    env = os.environ.copy()
-    try:
-        # Inject streamlit secrets into the environment for subprocesses
-        for key, value in st.secrets.items():
-            env[key] = str(value)
-    except:
-        pass # Not running in Streamlit Cloud or no secrets set
-        
-    result = subprocess.run(cmd, cwd=str(PROJECT_ROOT), capture_output=True, text=True, env=env)
-    if result.returncode != 0:
-        raise Exception(f"Script {script_path} failed: {result.stderr}")
-    
-    try:
-        return json.loads(result.stdout)
-    except json.JSONDecodeError:
-        raise Exception(f"Failed to parse JSON output: {result.stdout}")
+# Ensure Python path is set so we can import from the phases directly
+# We add each src directory to sys.path to allow internal imports like 'from pX_config import ...'
+sys.path.insert(0, str(PROJECT_ROOT / "phase3_preference_collection" / "src"))
+sys.path.insert(0, str(PROJECT_ROOT / "phase4_candidate_filtering" / "src"))
+sys.path.insert(0, str(PROJECT_ROOT / "phase5_llm_ranking" / "src"))
+
+# Direct imports from the modular pipeline
+from profile_builder import build_profile, save_profile
+from filter_engine import run_candidate_filtering
+from ranker import run_phase5
 
 @st.cache_data(show_spinner=False, ttl=3600)
-def fetch_recommendations(location: str, budget: str, minimum_rating: float, cuisine: str, top_n: int, mock: bool) -> Tuple[pd.DataFrame, list[str]]:
-    """Cached function to prevent running heavy subprocesses multiple times for the same input."""
+def fetch_recommendations(location: str, budget: str, minimum_rating: float, cuisine: str, top_n: int) -> Tuple[pd.DataFrame, list[str]]:
+    """Directly calls the pipeline functions without subprocess overhead."""
     
     payload = {
         "location": location,
@@ -55,45 +44,28 @@ def fetch_recommendations(location: str, budget: str, minimum_rating: float, cui
         "additional_preferences": []
     }
     
-    warnings = []
-
-    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".json") as tf:
-        json.dump(payload, tf)
-        temp_input_path = tf.name
+    # 1. Run Phase 3 logic
+    validation_result = build_profile(payload)
+    if validation_result.errors:
+        raise ValueError(f"Validation Errors: {', '.join(validation_result.errors)}")
+    save_profile(validation_result)
+    
+    # 2. Run Phase 4 logic
+    p4_res = run_candidate_filtering(top_n=top_n)
+    warnings = p4_res.get("relaxation_reasons", [])
+    if p4_res.get("shortlisted_row_count", 0) == 0:
+        raise ValueError("No candidates matched your criteria.")
         
-    try:
-        # Phase 3
-        p3_res = run_script("phase3_preference_collection/src/main.py", ["--input", temp_input_path])
-        if p3_res.get("errors"):
-            raise ValueError(f"Validation Errors: {', '.join(p3_res['errors'])}")
-            
-        # Phase 4
-        p4_res = run_script("phase4_candidate_filtering/src/main.py", ["--top-n", str(top_n)])
-        if p4_res.get("shortlisted_row_count", 0) == 0:
-            if p4_res.get("relaxation_reasons"):
-                warnings.extend(p4_res["relaxation_reasons"])
-            raise ValueError("No candidates matched your criteria.")
-            
-        if p4_res.get("relaxation_reasons"):
-            warnings.extend(p4_res["relaxation_reasons"])
-            
-        # Phase 5
-        p5_args = ["--top-n", str(top_n)]
-        if mock:
-            p5_args.append("--mock")
-        p5_res = run_script("phase5_llm_ranking/src/main.py", p5_args)
+    # 3. Run Phase 5 logic
+    p5_res = run_phase5(top_n=top_n, mock=False)
+    
+    # 4. Parse Results
+    parquet_path = p5_res.get("recommendations_output_path")
+    if not parquet_path or not Path(parquet_path).exists():
+        raise Exception("Ranking output file not found.")
         
-        # Parse Output
-        parquet_path = p5_res.get("recommendations_output_path")
-        if not parquet_path or not Path(parquet_path).exists():
-            raise Exception("AI ranking output file not found.")
-            
-        df = pd.read_parquet(parquet_path)
-        return df, warnings
-        
-    finally:
-        if os.path.exists(temp_input_path):
-            os.remove(temp_input_path)
+    df = pd.read_parquet(parquet_path)
+    return df, warnings
 
 
 # Custom CSS for Aesthetics
@@ -131,7 +103,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🍽️ Zomato Engine")
-st.markdown("Discover your next favorite meal using our intelligent recommendation engine.")
+st.markdown("Discover the best restaurants in town tailored just for you.")
 
 # Sidebar for inputs
 with st.sidebar:
@@ -150,9 +122,8 @@ with st.sidebar:
     cuisine = None if cuisine_selection == "Any" else cuisine_selection
     
     top_n = st.slider("Number of Recommendations", min_value=1, max_value=10, value=5)
-    mock = False # Mock Mode disabled for production
     
-    submit_button = st.button("Generate Recommendations", type="primary", use_container_width=True)
+    submit_button = st.button("Find Restaurants", type="primary", use_container_width=True)
 
 if submit_button:
     if not location:
@@ -160,7 +131,7 @@ if submit_button:
         st.stop()
 
     status_placeholder = st.empty()
-    status_placeholder.info("🚀 Processing request... (This may take up to 15 seconds if booting up).")
+    status_placeholder.info("🚀 Finding the best matches for you...")
 
     try:
         df, warnings = fetch_recommendations(
@@ -168,18 +139,17 @@ if submit_button:
             budget=budget,
             minimum_rating=minimum_rating,
             cuisine=cuisine,
-            top_n=top_n,
-            mock=mock
+            top_n=top_n
         )
         
         status_placeholder.empty()
-        st.success("✅ Analysis Complete!")
+        st.success("✅ Results Found!")
         
         for warning in warnings:
             st.warning(f"Note: {warning}")
 
         if not df.empty:
-            st.markdown(f"### ✨ AI Summary\n*{df.iloc[0].get('llm_summary', '')}*")
+            st.markdown(f"### ✨ Recommendations Summary\n*{df.iloc[0].get('llm_summary', '')}*")
             st.divider()
 
             for _, row in df.iterrows():
@@ -190,7 +160,7 @@ if submit_button:
                         <div style="color: #fbbf24; font-weight: bold; margin-bottom: 0.5rem;">★ {float(row.get('rating', 0))} &nbsp;|&nbsp; <span style="color: #a0a0ab;">₹{float(row.get('cost_for_two', 0))} for two</span></div>
                         <div style="color: #a0a0ab; font-size: 0.9rem; margin-bottom: 0.5rem;">{str(row.get('cuisines', ''))}</div>
                         <div class="ai-insight">
-                            <strong>AI Insight:</strong> {str(row.get('llm_reason', ''))}
+                            {str(row.get('llm_reason', ''))}
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -200,6 +170,6 @@ if submit_button:
         st.error(str(e))
     except Exception as e:
         status_placeholder.empty()
-        st.error(f"Critical System Error: {str(e)}")
+        st.error(f"System Error: {str(e)}")
 else:
-    st.info("👈 Enter your preferences in the sidebar and click **Generate Recommendations** to begin!")
+    st.info("👈 Enter your preferences and click **Find Restaurants** to begin!")

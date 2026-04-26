@@ -5,12 +5,15 @@ from typing import Any
 
 import pandas as pd
 
-from config import (
+from p5_config import (
     DEFAULT_TOP_N,
     METADATA_DIR,
     PHASE3_PROFILE_FILE,
     PHASE4_METADATA_FILE,
     RECOMMENDATIONS_DIR,
+    GROQ_API_KEY,
+    GROQ_API_URL,
+    GROQ_MODEL
 )
 from groq_client import call_groq
 from prompt_builder import build_prompt

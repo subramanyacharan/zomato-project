@@ -5,7 +5,7 @@ from typing import Any
 
 import pandas as pd
 
-from config import (
+from p4_config import (
     CANDIDATES_DIR,
     DEFAULT_TOP_N,
     METADATA_DIR,

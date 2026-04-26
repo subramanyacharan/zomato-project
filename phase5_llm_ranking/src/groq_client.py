@@ -3,7 +3,7 @@ from typing import Any
 
 import requests
 
-from config import GROQ_API_KEY, GROQ_API_URL, GROQ_MODEL
+from p5_config import GROQ_API_KEY, GROQ_API_URL, GROQ_MODEL
 
 
 def call_groq(prompt: str, timeout_seconds: int = 60) -> dict[str, Any]:

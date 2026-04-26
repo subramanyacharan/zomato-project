@@ -8,7 +8,7 @@ from typing import Any, Optional
 
 import pandas as pd
 
-from config import BUDGET_ALIASES, PHASE2_METADATA_FILE, PROFILES_DIR, DATA_DIR
+from p3_config import BUDGET_ALIASES, PHASE2_METADATA_FILE, PROFILES_DIR, DATA_DIR
 
 
 @dataclass
