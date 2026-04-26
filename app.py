@@ -4,7 +4,7 @@ import json
 import tempfile
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, Tuple
 
 import pandas as pd
 import streamlit as st
@@ -18,7 +18,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Load environment variables (fails gracefully if .env is missing in production)
+# Load environment variables
 PROJECT_ROOT = Path(__file__).resolve().parent
 load_dotenv(PROJECT_ROOT / ".env")
 
@@ -26,24 +26,70 @@ def run_script(script_path: str, args: list[str]) -> dict[str, Any]:
     cmd = [sys.executable, str(PROJECT_ROOT / script_path)] + args
     result = subprocess.run(cmd, cwd=str(PROJECT_ROOT), capture_output=True, text=True)
     if result.returncode != 0:
-        st.error(f"Script {script_path} failed.")
-        st.code(result.stderr)
-        st.stop()
+        raise Exception(f"Script {script_path} failed: {result.stderr}")
     
     try:
         return json.loads(result.stdout)
     except json.JSONDecodeError:
-        st.error(f"Failed to parse JSON output from {script_path}.")
-        st.code(result.stdout)
-        st.stop()
+        raise Exception(f"Failed to parse JSON output: {result.stdout}")
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def fetch_recommendations(location: str, budget: str, minimum_rating: float, cuisine: str, top_n: int, mock: bool) -> Tuple[pd.DataFrame, list[str]]:
+    """Cached function to prevent running heavy subprocesses multiple times for the same input."""
+    
+    payload = {
+        "location": location,
+        "budget": budget,
+        "cuisine": cuisine if cuisine else None,
+        "minimum_rating": minimum_rating,
+        "additional_preferences": []
+    }
+    
+    warnings = []
+
+    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".json") as tf:
+        json.dump(payload, tf)
+        temp_input_path = tf.name
+        
+    try:
+        # Phase 3
+        p3_res = run_script("phase3_preference_collection/src/main.py", ["--input", temp_input_path])
+        if p3_res.get("errors"):
+            raise ValueError(f"Validation Errors: {', '.join(p3_res['errors'])}")
+            
+        # Phase 4
+        p4_res = run_script("phase4_candidate_filtering/src/main.py", ["--top-n", str(top_n)])
+        if p4_res.get("shortlisted_row_count", 0) == 0:
+            if p4_res.get("relaxation_reasons"):
+                warnings.extend(p4_res["relaxation_reasons"])
+            raise ValueError("No candidates matched your criteria.")
+            
+        if p4_res.get("relaxation_reasons"):
+            warnings.extend(p4_res["relaxation_reasons"])
+            
+        # Phase 5
+        p5_args = ["--top-n", str(top_n)]
+        if mock:
+            p5_args.append("--mock")
+        p5_res = run_script("phase5_llm_ranking/src/main.py", p5_args)
+        
+        # Parse Output
+        parquet_path = p5_res.get("recommendations_output_path")
+        if not parquet_path or not Path(parquet_path).exists():
+            raise Exception("AI ranking output file not found.")
+            
+        df = pd.read_parquet(parquet_path)
+        return df, warnings
+        
+    finally:
+        if os.path.exists(temp_input_path):
+            os.remove(temp_input_path)
+
 
 # Custom CSS for Aesthetics
 st.markdown("""
 <style>
-    /* Premium Streamlit Theming Override */
-    .stApp {
-        background-color: #0a0a0f;
-    }
+    .stApp { background-color: #0a0a0f; }
     .restaurant-card {
         background-color: rgba(255, 255, 255, 0.05);
         border: 1px solid rgba(255, 255, 255, 0.1);
@@ -103,73 +149,47 @@ if submit_button:
         st.warning("Please enter a location.")
         st.stop()
 
-    payload = {
-        "location": location,
-        "budget": budget,
-        "cuisine": cuisine if cuisine else None,
-        "minimum_rating": minimum_rating,
-        "additional_preferences": []
-    }
+    status_placeholder = st.empty()
+    status_placeholder.info("🚀 Processing request... (This may take up to 15 seconds if booting up).")
 
-    with st.spinner("Analyzing your preferences and generating recommendations..."):
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".json") as tf:
-            json.dump(payload, tf)
-            temp_input_path = tf.name
-            
-        try:
-            # 1. Run Phase 3
-            p3_res = run_script("phase3_preference_collection/src/main.py", ["--input", temp_input_path])
-            if p3_res.get("errors"):
-                st.error("Validation Errors:")
-                for err in p3_res["errors"]:
-                    st.write(f"- {err}")
-                st.stop()
-                
-            # 2. Run Phase 4
-            p4_res = run_script("phase4_candidate_filtering/src/main.py", ["--top-n", str(top_n)])
-            if p4_res.get("shortlisted_row_count", 0) == 0:
-                st.warning("No candidates matched your criteria.")
-                if p4_res.get("relaxation_reasons"):
-                    st.info("System tried relaxing constraints:")
-                    for msg in p4_res["relaxation_reasons"]:
-                        st.write(f"- {msg}")
-                st.stop()
-                
-            # 3. Run Phase 5
-            p5_args = ["--top-n", str(top_n)]
-            if mock:
-                p5_args.append("--mock")
-            p5_res = run_script("phase5_llm_ranking/src/main.py", p5_args)
-            
-            # 4. Display Results
-            parquet_path = p5_res.get("recommendations_output_path")
-            if not parquet_path or not Path(parquet_path).exists():
-                st.error("LLM ranking output file not found.")
-                st.stop()
-                
-            df = pd.read_parquet(parquet_path)
-            
-            st.success("Analysis Complete!")
-            
-            if not df.empty:
-                st.markdown(f"### ✨ AI Summary\n*{df.iloc[0].get('llm_summary', '')}*")
-                st.divider()
+    try:
+        df, warnings = fetch_recommendations(
+            location=location,
+            budget=budget,
+            minimum_rating=minimum_rating,
+            cuisine=cuisine,
+            top_n=top_n,
+            mock=mock
+        )
+        
+        status_placeholder.empty()
+        st.success("✅ Analysis Complete!")
+        
+        for warning in warnings:
+            st.warning(f"Note: {warning}")
 
-                for _, row in df.iterrows():
-                    with st.container():
-                        st.markdown(f"""
-                        <div class="restaurant-card">
-                            <div class="restaurant-title">#{int(row['rank'])} - {str(row['restaurant_name'])}</div>
-                            <div style="color: #fbbf24; font-weight: bold; margin-bottom: 0.5rem;">★ {float(row.get('rating', 0))} &nbsp;|&nbsp; <span style="color: #a0a0ab;">₹{float(row.get('cost_for_two', 0))} for two</span></div>
-                            <div style="color: #a0a0ab; font-size: 0.9rem; margin-bottom: 0.5rem;">{str(row.get('cuisines', ''))}</div>
-                            <div class="ai-insight">
-                                <strong>AI Insight:</strong> {str(row.get('llm_reason', ''))}
-                            </div>
+        if not df.empty:
+            st.markdown(f"### ✨ AI Summary\n*{df.iloc[0].get('llm_summary', '')}*")
+            st.divider()
+
+            for _, row in df.iterrows():
+                with st.container():
+                    st.markdown(f"""
+                    <div class="restaurant-card">
+                        <div class="restaurant-title">#{int(row['rank'])} - {str(row['restaurant_name'])}</div>
+                        <div style="color: #fbbf24; font-weight: bold; margin-bottom: 0.5rem;">★ {float(row.get('rating', 0))} &nbsp;|&nbsp; <span style="color: #a0a0ab;">₹{float(row.get('cost_for_two', 0))} for two</span></div>
+                        <div style="color: #a0a0ab; font-size: 0.9rem; margin-bottom: 0.5rem;">{str(row.get('cuisines', ''))}</div>
+                        <div class="ai-insight">
+                            <strong>AI Insight:</strong> {str(row.get('llm_reason', ''))}
                         </div>
-                        """, unsafe_allow_html=True)
-                        
-        finally:
-            if os.path.exists(temp_input_path):
-                os.remove(temp_input_path)
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+    except ValueError as e:
+        status_placeholder.empty()
+        st.error(str(e))
+    except Exception as e:
+        status_placeholder.empty()
+        st.error(f"Critical System Error: {str(e)}")
 else:
     st.info("👈 Enter your preferences in the sidebar and click **Generate Recommendations** to begin!")
