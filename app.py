@@ -130,8 +130,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🍽️ Zomato AI Recommendations")
-st.markdown("Discover your next favorite meal using our advanced LLM-powered engine.")
+st.title("🍽️ Zomato Engine")
+st.markdown("Discover your next favorite meal using our intelligent recommendation engine.")
 
 # Sidebar for inputs
 with st.sidebar:
