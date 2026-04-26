@@ -25,6 +25,9 @@ __pycache__/
 *.parquet
 *.json
 !test_input.json
+!phase2_preprocessing/processed/metadata/latest_preprocessing.json
+!phase2_preprocessing/processed/structured/*.parquet
+!phase3_preference_collection/data/reference_lists.json
 
 # OS generated files
 .DS_Store

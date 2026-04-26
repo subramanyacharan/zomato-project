@@ -150,7 +150,7 @@ with st.sidebar:
     cuisine = None if cuisine_selection == "Any" else cuisine_selection
     
     top_n = st.slider("Number of Recommendations", min_value=1, max_value=10, value=5)
-    mock = st.checkbox("Mock Mode (No API Call)", value=False)
+    mock = False # Mock Mode disabled for production
     
     submit_button = st.button("Generate Recommendations", type="primary", use_container_width=True)
 

@@ -1,0 +1,16 @@
+{
+  "run_id": "20260423T081537Z",
+  "phase1_raw_input_path": "C:\\Users\\Hp\\Documents\\projects\\milestone 1\\phase1_data_acquisition\\staging\\raw\\zomato_raw_20260423T075450Z.parquet",
+  "phase2_output_path": "C:\\Users\\Hp\\Documents\\projects\\milestone 1\\phase2_preprocessing\\processed\\structured\\zomato_structured_20260423T081537Z.parquet",
+  "input_row_count": 51717,
+  "output_row_count": 9715,
+  "output_columns": [
+    "name",
+    "location",
+    "cuisines",
+    "cost_for_two",
+    "rating",
+    "tags"
+  ],
+  "processed_at_utc": "2026-04-23T08:15:43.043110+00:00"
+}
